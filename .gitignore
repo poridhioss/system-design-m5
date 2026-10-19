@@ -1,0 +1,8 @@
+# Internal context for authoring; not for students
+Claude-*.md
+PORIDHI_NODEJS_LABS_GUIDE.md
+system-design.md
+
+node_modules/
+.env
+!labs/*/app/.env
