@@ -97,13 +97,14 @@ docker --version
 docker compose version
 ```
 
-<!-- UNTESTED: replace with real output from a Poridhi run -->
 ```
-v24.x.x
-11.x.x
-Docker version 29.x.x, build xxxxxxx
-Docker Compose version v2.x.x
+v22.16.0
+10.9.2
+Docker version 29.7.2, build a7dcaa6
+Docker Compose version v5.5.0
 ```
+
+Your exact versions may differ slightly. Any Node.js version from 22 upwards works for this lab.
 
 Create the project folder and move into it:
 
@@ -140,12 +141,16 @@ Install the dependencies:
 npm install
 ```
 
-<!-- UNTESTED -->
 ```
-added 79 packages, and audited 80 packages in 3s
+added 79 packages, and audited 80 packages in 6s
+
+28 packages are looking for funding
+  run `npm fund` for details
 
 found 0 vulnerabilities
 ```
+
+npm may also print a notice that a newer npm version is available. You can ignore it.
 
 This creates `node_modules/` and a `package-lock.json` that records the exact version of every package.
 
@@ -204,14 +209,17 @@ docker compose up -d --wait
 - `-d` runs the containers in the background.
 - `--wait` blocks until every container is running and healthy, so the next command never runs too early.
 
-The first run downloads the `postgres:17` image and prints many `Pulling` / `Pull complete` lines. That's normal. The end of the output looks like this:
+The first run downloads the `postgres:17` image, which takes a few seconds. When it finishes:
 
-<!-- UNTESTED -->
 ```
- ✔ Network users-api_default   Created
- ✔ Volume "users-api_pgdata"   Created
- ✔ Container users-api-db-1    Healthy
+[+] up 20/20
+ ✔ Image postgres:17         Pulled          13.1s
+ ✔ Network users-api_default Created          0.0s
+ ✔ Volume users-api_pgdata   Created          0.0s
+ ✔ Container users-api-db-1  Healthy          3.4s
 ```
+
+`Healthy` means the healthcheck passed: Postgres is accepting connections and `init.sql` has run.
 
 Check that the table exists:
 
@@ -221,7 +229,6 @@ docker compose exec db psql -U app -d appdb -c '\d users'
 
 `docker compose exec db` runs a command inside the `db` container. `psql` is the Postgres command-line client, and `\d users` describes the table.
 
-<!-- UNTESTED -->
 ```
                                        Table "public.users"
    Column   |           Type           | Collation | Nullable |              Default
@@ -237,14 +244,25 @@ Indexes:
 
 ## Step 3: Connect to the database
 
-Configuration belongs in environment variables, not in code. That way the same code runs on your VM and inside a container, with different settings. Create **`.env`**:
+Configuration belongs in environment variables, not in code. That way the same code runs on your VM and inside a container, with different settings.
 
-```bash
+In the editor, create a file named **`.env`** in the project folder with these two lines. This is a file, not a command: don't paste it into the terminal.
+
+```
 DATABASE_URL=postgres://app:app@localhost:5432/appdb
 PORT=3000
 ```
 
-The URL reads as `postgres://USER:PASSWORD@HOST:PORT/DATABASE`.
+The URL reads as `postgres://USER:PASSWORD@HOST:PORT/DATABASE`. Check that the file exists:
+
+```bash
+cat .env
+```
+
+```
+DATABASE_URL=postgres://app:app@localhost:5432/appdb
+PORT=3000
+```
 
 Create **`src/db.js`**:
 
