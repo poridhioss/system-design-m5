@@ -439,7 +439,6 @@ Open a **second terminal** (**Terminal → New Terminal** in VS Code) and start 
 cd ~/code/users-api && npm run dev
 ```
 
-<!-- UNTESTED -->
 ```
 > dev
 > node --watch --env-file=.env src/server.js
@@ -515,21 +514,20 @@ Make it executable and run it:
 chmod +x requests.sh && ./requests.sh
 ```
 
-<!-- UNTESTED: verified locally; replace with a real Poridhi run -->
 ```
 ### POST /users (create)
 created user id: 1
 
 ### GET /users 
-[{"id":1,"name":"Ada Lovelace","email":"ada@example.com","created_at":"2026-10-19T12:13:09.222Z"}]
+[{"id":1,"name":"Ada Lovelace","email":"ada@example.com","created_at":"2026-10-23T09:24:17.406Z"}]
 HTTP 200
 
 ### GET /users/1 
-{"id":1,"name":"Ada Lovelace","email":"ada@example.com","created_at":"2026-10-19T12:13:09.222Z"}
+{"id":1,"name":"Ada Lovelace","email":"ada@example.com","created_at":"2026-10-23T09:24:17.406Z"}
 HTTP 200
 
 ### PUT /users/1 {"name":"Ada King","email":"ada.king@example.com"}
-{"id":1,"name":"Ada King","email":"ada.king@example.com","created_at":"2026-10-19T12:13:09.222Z"}
+{"id":1,"name":"Ada King","email":"ada.king@example.com","created_at":"2026-10-23T09:24:17.406Z"}
 HTTP 200
 
 ### POST /users {"name":"Copy Cat","email":"ada.king@example.com"}
