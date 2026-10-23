@@ -20,9 +20,9 @@ services:
     build: .
     environment:
       DATABASE_URL: postgres://app:app@db:5432/appdb
-      PORT: 3000
+      PORT: 8000
     ports:
-      - "3000:3000"
+      - "8000:8000"
     depends_on:
       db:
         condition: service_healthy

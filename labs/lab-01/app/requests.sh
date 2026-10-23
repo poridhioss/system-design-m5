@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # HTTP test collection for the users API.
-# Usage: ./requests.sh            (defaults to http://localhost:3000)
+# Usage: ./requests.sh            (defaults to http://localhost:8000)
 #        BASE=http://HOST:PORT ./requests.sh
 
-BASE=${BASE:-http://localhost:3000}
+BASE=${BASE:-http://localhost:8000}
 
 # req METHOD PATH [JSON_BODY]: print the request, the response body and the status code
 req() {
@@ -18,8 +18,17 @@ req() {
 
 # Create a user and remember its id for the requests below
 echo "### POST /users (create)"
-ID=$(curl -sS -X POST "$BASE/users" -H 'Content-Type: application/json' \
-  -d '{"name":"Ada Lovelace","email":"ada@example.com"}' | jq -r .id)
+CREATED=$(curl -sS -X POST "$BASE/users" -H 'Content-Type: application/json' \
+  -d '{"name":"Ada Lovelace","email":"ada@example.com"}')
+ID=$(echo "$CREATED" | jq -r .id 2>/dev/null)
+
+# Stop here if the create failed: every request below needs a real id.
+if ! [[ "$ID" =~ ^[0-9]+$ ]]; then
+  echo "could not create the test user. Is the API running at $BASE? The response was:"
+  echo "$CREATED" | head -c 300
+  echo
+  exit 1
+fi
 echo "created user id: $ID"
 echo
 

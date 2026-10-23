@@ -12,7 +12,7 @@ In this lab you'll build a small **users API** with Express and PostgreSQL. You'
 
 ```mermaid
 flowchart LR
-    client["curl / requests.sh"] -->|"HTTP :3000"| json
+    client["curl / requests.sh"] -->|"HTTP :8000"| json
 
     subgraph api["api container (Node.js + Express)"]
         json["express.json()"] --> router["/users router<br/>validate + query"]
@@ -250,7 +250,7 @@ In the editor, create a file named **`.env`** in the project folder with these t
 
 ```
 DATABASE_URL=postgres://app:app@localhost:5432/appdb
-PORT=3000
+PORT=8000
 ```
 
 The URL reads as `postgres://USER:PASSWORD@HOST:PORT/DATABASE`. Check that the file exists:
@@ -261,7 +261,7 @@ cat .env
 
 ```
 DATABASE_URL=postgres://app:app@localhost:5432/appdb
-PORT=3000
+PORT=8000
 ```
 
 Create **`src/db.js`**:
@@ -391,7 +391,7 @@ import express from 'express';
 import { router as usersRouter } from './users.js';
 
 const app = express();
-const port = Number(process.env.PORT ?? 3000);
+const port = Number(process.env.PORT ?? 8000);
 
 app.use(express.json());
 app.use('/users', usersRouter);
@@ -415,7 +415,9 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'internal server error' });
 });
 
-app.listen(port, () => {
+// Express 5 passes startup errors (such as the port being taken) to this callback.
+app.listen(port, (err) => {
+  if (err) throw err;
   console.log(`users API listening on port ${port}`);
 });
 ```
@@ -426,7 +428,8 @@ The order of `app.use` calls is the order requests flow through:
 - `app.use('/users', usersRouter)` mounts the router, so its `'/'` route becomes `/users` and `'/:id'` becomes `/users/:id`.
 - The "not found" handler sits after all routes, so it only runs when nothing matched.
 - The error handler comes last. It maps known errors to client-facing codes: invalid JSON from `express.json()` becomes `400`, and Postgres error code `23505` (a `UNIQUE` violation) becomes `409`. Everything else is logged and returned as a generic `500`, so internal details never leak to the client.
-- `PORT` comes from the environment and is converted with `Number()`, because environment variables are always strings.
+- `PORT` comes from the environment and is converted with `Number()`, because environment variables are always strings. The API uses port **8000**, because a Poridhi service already uses port 3000 on the VM.
+- In Express 5, if the server can't start (for example, `EADDRINUSE` because another program holds the port), the error is passed to the `listen` callback. `if (err) throw err;` makes the app crash with that error instead of printing "listening" for a server that never started.
 
 Open a **second terminal** (**Terminal → New Terminal** in VS Code) and start the API in watch mode.
 
@@ -441,7 +444,7 @@ cd ~/code/users-api && npm run dev
 > dev
 > node --watch --env-file=.env src/server.js
 
-users API listening on port 3000
+users API listening on port 8000
 ```
 
 Leave this terminal running. Go back to the first terminal for the next steps.
@@ -453,10 +456,10 @@ Instead of Postman, the test collection is a script of `curl` requests that runs
 ```bash
 #!/usr/bin/env bash
 # HTTP test collection for the users API.
-# Usage: ./requests.sh            (defaults to http://localhost:3000)
+# Usage: ./requests.sh            (defaults to http://localhost:8000)
 #        BASE=http://HOST:PORT ./requests.sh
 
-BASE=${BASE:-http://localhost:3000}
+BASE=${BASE:-http://localhost:8000}
 
 # req METHOD PATH [JSON_BODY]: print the request, the response body and the status code
 req() {
@@ -471,8 +474,17 @@ req() {
 
 # Create a user and remember its id for the requests below
 echo "### POST /users (create)"
-ID=$(curl -sS -X POST "$BASE/users" -H 'Content-Type: application/json' \
-  -d '{"name":"Ada Lovelace","email":"ada@example.com"}' | jq -r .id)
+CREATED=$(curl -sS -X POST "$BASE/users" -H 'Content-Type: application/json' \
+  -d '{"name":"Ada Lovelace","email":"ada@example.com"}')
+ID=$(echo "$CREATED" | jq -r .id 2>/dev/null)
+
+# Stop here if the create failed: every request below needs a real id.
+if ! [[ "$ID" =~ ^[0-9]+$ ]]; then
+  echo "could not create the test user. Is the API running at $BASE? The response was:"
+  echo "$CREATED" | head -c 300
+  echo
+  exit 1
+fi
 echo "created user id: $ID"
 echo
 
@@ -495,7 +507,7 @@ The `curl` flags used here:
 - `-d`: the request body.
 - `-w '\nHTTP %{http_code}\n'`: after the body, print the status code on its own line.
 
-`jq -r .id` pulls the `id` field out of the JSON response, so the later requests can use the new user's id. The script deletes the user at the end, so you can run it again and again.
+`jq -r .id` pulls the `id` field out of the JSON response, so the later requests can use the new user's id. If the create fails (for example, the API isn't running), the `if` stops the script and prints what came back, instead of sending nine more requests with an empty id. The script deletes the user at the end, so you can run it again and again.
 
 Make it executable and run it:
 
@@ -562,10 +574,10 @@ router.post('/', async (req, res) => {
 Save the file. `npm run dev` restarts the server automatically (watch the second terminal). Now send the same bad request as before, plus one with no name at all:
 
 ```bash
-curl -sS -X POST localhost:3000/users -H 'Content-Type: application/json' \
+curl -sS -X POST localhost:8000/users -H 'Content-Type: application/json' \
   -d '{"name":"","email":"not-an-email"}' -w '\nHTTP %{http_code}\n'
 
-curl -sS -X POST localhost:3000/users -H 'Content-Type: application/json' \
+curl -sS -X POST localhost:8000/users -H 'Content-Type: application/json' \
   -d '{"email":"someone@example.com"}' -w '\nHTTP %{http_code}\n'
 ```
 
@@ -598,7 +610,7 @@ Run `./requests.sh` once more to confirm that everything behaves as before.
 
 So far the API has run directly on the VM. The deliverable is a container, so the whole service can start anywhere with one command.
 
-First, stop the dev server: go to the **second terminal** and press `Ctrl+C`. Port 3000 must be free for the container.
+First, stop the dev server: go to the **second terminal** and press `Ctrl+C`. Port 8000 must be free for the container.
 
 Create **`Dockerfile`**:
 
@@ -613,7 +625,7 @@ RUN npm ci --omit=dev
 
 COPY src ./src
 
-EXPOSE 3000
+EXPOSE 8000
 CMD ["node", "src/server.js"]
 ```
 
@@ -654,9 +666,9 @@ services:
     build: .
     environment:
       DATABASE_URL: postgres://app:app@db:5432/appdb
-      PORT: 3000
+      PORT: 8000
     ports:
-      - "3000:3000"
+      - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -669,7 +681,7 @@ What the new `api` service does:
 
 - `build: .` builds the image from the `Dockerfile` in this folder.
 - `DATABASE_URL` uses the host **`db`**, the service name, instead of `localhost`. Inside the container, `localhost` would be the API container itself.
-- `ports: "3000:3000"` publishes the API on the VM's port 3000.
+- `ports: "8000:8000"` publishes the API on the VM's port 8000.
 - `depends_on` with `condition: service_healthy` starts the API only after the database passes its healthcheck. Without the condition, Compose would only wait for the database container to *start*, and the API could try to connect before Postgres is ready.
 
 Build and start the stack:
@@ -695,14 +707,14 @@ docker compose ps
 <!-- UNTESTED -->
 ```
 NAME              IMAGE           COMMAND                  SERVICE   CREATED          STATUS                    PORTS
-users-api-api-1   users-api-api   "docker-entrypoint.s…"   api       10 seconds ago   Up 9 seconds              0.0.0.0:3000->3000/tcp
+users-api-api-1   users-api-api   "docker-entrypoint.s…"   api       10 seconds ago   Up 9 seconds              0.0.0.0:8000->8000/tcp
 users-api-db-1    postgres:17     "docker-entrypoint.s…"   db        5 minutes ago    Up 5 minutes (healthy)    127.0.0.1:5432->5432/tcp
 ```
 
 Wait until the API answers, then run the same test collection against the container:
 
 ```bash
-until curl -sf localhost:3000/users > /dev/null; do sleep 1; done
+until curl -sf localhost:8000/users > /dev/null; do sleep 1; done
 ./requests.sh
 ```
 
@@ -718,7 +730,7 @@ docker compose logs api
 
 <!-- UNTESTED -->
 ```
-api-1  | users API listening on port 3000
+api-1  | users API listening on port 8000
 ```
 
 ## Conclusion

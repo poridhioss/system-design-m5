@@ -2,7 +2,7 @@ import express from 'express';
 import { router as usersRouter } from './users.js';
 
 const app = express();
-const port = Number(process.env.PORT ?? 3000);
+const port = Number(process.env.PORT ?? 8000);
 
 app.use(express.json());
 app.use('/users', usersRouter);
@@ -26,6 +26,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'internal server error' });
 });
 
-app.listen(port, () => {
+// Express 5 passes startup errors (such as the port being taken) to this callback.
+app.listen(port, (err) => {
+  if (err) throw err;
   console.log(`users API listening on port ${port}`);
 });
