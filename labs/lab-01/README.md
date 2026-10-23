@@ -592,17 +592,32 @@ Two different failures:
 1. **Garbage got in.** A user with an empty name and an invalid email is now stored, and every client that reads it later has to deal with it.
 2. **The client's mistake was blamed on the server.** With no name, the code calls `.trim()` on `undefined` and throws. The client gets a `500`, which says "the server is broken", when the real answer is `400`, "your request is wrong". The second terminal shows the `TypeError`.
 
-Remove the `//` from the two lines, save, and delete the bad row:
+Now undo the damage. **Don't skip this:** the next step builds the container from this same file, so leftover comments would end up inside the image.
 
-```bash
-docker compose exec db psql -U app -d appdb -c "DELETE FROM users WHERE email = 'not-an-email'"
-```
+1. Remove the `//` from the two lines and save. The dev server restarts again.
+2. Delete the bad row:
 
-```
-DELETE 1
-```
+   ```bash
+   docker compose exec db psql -U app -d appdb -c "DELETE FROM users WHERE email = 'not-an-email'"
+   ```
 
-Run `./requests.sh` once more to confirm that everything behaves as before.
+   ```
+   DELETE 1
+   ```
+
+3. Confirm validation is back by sending the bad request once more:
+
+   ```bash
+   curl -sS -X POST localhost:8000/users -H 'Content-Type: application/json' \
+     -d '{"name":"","email":"not-an-email"}' -w '\nHTTP %{http_code}\n'
+   ```
+
+   ```
+   {"error":"name is required"}
+   HTTP 400
+   ```
+
+   If you get `201` (or `409`), the validation lines are still commented out.
 
 ## Step 8: Run the API in a container
 
@@ -698,12 +713,14 @@ Build and start the stack:
 docker compose up -d --build --wait
 ```
 
-`--build` builds the API image before starting. The first build downloads `node:24-slim`, so expect a lot of output. The end:
+`--build` builds the API image before starting. The first build downloads `node:24-slim` and runs `npm ci`, so expect a lot of build output. The end:
 
-<!-- UNTESTED -->
 ```
- ✔ Container users-api-db-1   Healthy
- ✔ Container users-api-api-1  Started
+[+] up 4/4
+ ✔ Image users-api-api       Built          1.6s
+ ✔ Network users-api_default Created        0.0s
+ ✔ Container users-api-db-1  Healthy        3.6s
+ ✔ Container users-api-api-1 Healthy        3.6s
 ```
 
 Check that both containers are up:
@@ -712,12 +729,13 @@ Check that both containers are up:
 docker compose ps
 ```
 
-<!-- UNTESTED -->
 ```
-NAME              IMAGE           COMMAND                  SERVICE   CREATED          STATUS                    PORTS
-users-api-api-1   users-api-api   "docker-entrypoint.s…"   api       10 seconds ago   Up 9 seconds              0.0.0.0:8000->8000/tcp
-users-api-db-1    postgres:17     "docker-entrypoint.s…"   db        5 minutes ago    Up 5 minutes (healthy)    127.0.0.1:5432->5432/tcp
+NAME              IMAGE           COMMAND                  SERVICE   CREATED         STATUS                   PORTS
+users-api-api-1   users-api-api   "docker-entrypoint.s…"   api       6 seconds ago   Up 2 seconds             0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+users-api-db-1    postgres:17     "docker-entrypoint.s…"   db        6 seconds ago   Up 5 seconds (healthy)   127.0.0.1:5432->5432/tcp
 ```
+
+The `api` row must show `0.0.0.0:8000->8000/tcp` under PORTS: that's the API published on the VM's port 8000.
 
 Wait until the API answers, then run the same test collection against the container:
 
@@ -738,7 +756,6 @@ To see the API's logs from inside the container:
 docker compose logs api
 ```
 
-<!-- UNTESTED -->
 ```
 api-1  | users API listening on port 8000
 ```
