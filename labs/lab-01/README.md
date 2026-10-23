@@ -722,11 +722,13 @@ users-api-db-1    postgres:17     "docker-entrypoint.s…"   db        5 minutes
 Wait until the API answers, then run the same test collection against the container:
 
 ```bash
-until curl -sf localhost:8000/users > /dev/null; do sleep 1; done
+for i in $(seq 1 20); do curl -sf localhost:8000/users > /dev/null && break; sleep 1; done
 ./requests.sh
 ```
 
-`until ... do sleep 1; done` retries every second until the API responds. `curl -f` makes curl fail on an error status, so the loop only ends on a real success.
+The `for` loop tries up to 20 times, one second apart, and stops (`break`) as soon as the API answers. `curl -f` makes curl fail on an error status, so only a real success ends the loop early. If the API never answers, `requests.sh` stops with `could not create the test user`.
+
+> **If `requests.sh` can't connect:** run `docker compose ps` and look at the `api` row. If its PORTS column is empty, the container was created during an earlier `docker compose up` that failed (for example, with `address already in use`) and has no port mapping. Recreate it with `docker compose down`, then `docker compose up -d --build --wait`. `down` without `-v` keeps the database data.
 
 The output should match Step 6, with new ids, because the database keeps counting. The same tests passing proves the containerized API behaves exactly like the one you ran by hand.
 
