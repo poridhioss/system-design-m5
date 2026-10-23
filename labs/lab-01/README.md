@@ -608,7 +608,17 @@ Run `./requests.sh` once more to confirm that everything behaves as before.
 
 So far the API has run directly on the VM. The deliverable is a container, so the whole service can start anywhere with one command.
 
-First, stop the dev server: go to the **second terminal** and press `Ctrl+C`. Port 8000 must be free for the container.
+First, stop the dev server: go to the **second terminal** and press `Ctrl+C`. The container needs port 8000, and the dev server is still holding it. Back in the first terminal, check that the port is free:
+
+```bash
+ss -tln | grep -q ':8000 ' && echo "port 8000 is still in use" || echo "port 8000 is free"
+```
+
+`ss -tln` lists every port something is listening on. If this prints `port 8000 is still in use`, the dev server is still running: stop it before you continue. Otherwise `docker compose up` fails with `failed to bind host port 0.0.0.0:8000/tcp: address already in use`.
+
+```
+port 8000 is free
+```
 
 Create **`Dockerfile`**:
 
