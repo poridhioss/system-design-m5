@@ -579,13 +579,15 @@ curl -sS -X POST localhost:8000/users -H 'Content-Type: application/json' \
   -d '{"email":"someone@example.com"}' -w '\nHTTP %{http_code}\n'
 ```
 
-<!-- UNTESTED -->
+<!-- PARTLY TESTED: the 201 row is from a real run (id 6 in the DB); the 500 response hasn't been seen on the VM yet -->
 ```
-{"id":2,"name":"","email":"not-an-email","created_at":"..."}
+{"id":6,"name":"","email":"not-an-email","created_at":"2026-10-23T09:26:33.349Z"}
 HTTP 201
 {"error":"internal server error"}
 HTTP 500
 ```
+
+Your `id` will differ: it depends on how many users you've created so far.
 
 Two different failures:
 
