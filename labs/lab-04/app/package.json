@@ -1,0 +1,14 @@
+{
+  "name": "production-service",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "type": "module",
+  "dependencies": {
+    "express": "5.3.0",
+    "p-limit": "7.3.3",
+    "pg": "8.23.1",
+    "pg-query-stream": "4.17.1"
+  }
+}
