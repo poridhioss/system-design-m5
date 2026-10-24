@@ -18,6 +18,17 @@ By the end of the lab you'll have:
 - A `requests.sh` test collection that exercises the happy paths and the error cases.
 - A Docker Compose stack running the API and PostgreSQL together.
 
+## Objectives
+
+By the end of this lab, you will be able to:
+
+- Design REST routes for one resource, and choose the right status code for every outcome (`200`, `201`, `204`, `400`, `404`, `409`, `500`).
+- Validate request input on the server, and explain what goes wrong without it.
+- Query PostgreSQL safely from Node.js, with parameterized queries and a connection pool.
+- Turn errors into clean JSON responses with a central Express error handler.
+- Run PostgreSQL in Docker Compose with a healthcheck, and connect to it by service name.
+- Package the API as a container, and test every route with a `curl`-based test collection.
+
 ## Concepts
 
 ### REST routes for one resource

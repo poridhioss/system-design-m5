@@ -40,6 +40,16 @@ flowchart LR
     end
 ```
 
+## Objectives
+
+By the end of this lab, you will be able to:
+
+- Combine separate features into one service with a coherent module structure.
+- Write a health check that reports whether the service can really serve requests: database reachable, and not shutting down.
+- Implement graceful shutdown: handle `SIGTERM`, stop accepting connections, end open streams, close the database pool and exit cleanly, with a safety timeout.
+- Write smoke tests with Node's built-in test runner, covering a happy path and a failure case for each capability.
+- Explain how error handling differs between async/await routes and streams, and identify what breaks first under load.
+
 ## Concepts
 
 ### Graceful shutdown

@@ -16,6 +16,17 @@ Everything is measured with plain `curl`, plus a small memory meter built into t
 
 The app runs directly on the VM with Node.js, and PostgreSQL runs in a Docker container.
 
+## Objectives
+
+By the end of this lab, you will be able to:
+
+- Refactor a callback-heavy handler into async/await, and explain why it reads better but isn't faster on its own.
+- Run independent queries in parallel with `Promise.all`.
+- Explain how unbounded concurrency starves a connection pool, and cap it with `p-limit`.
+- Stream a large query result to the client with `pg-query-stream` and `pipeline()`, instead of loading it all into memory.
+- Explain backpressure, and show it keeping memory flat with a slow client.
+- Measure latency, time to first byte and peak memory, and record a before/after performance profile.
+
 ## Concepts
 
 ### Callbacks, promises and async/await

@@ -13,6 +13,16 @@ By the end, you'll have the service running in a container that Docker reports a
 
 ![alt text](images/1.png)
 
+## Objectives
+
+By the end of this lab, you will be able to:
+
+- Explain how Server-Sent Events push data over one open HTTP response, and how that differs from polling.
+- Build a subscribe-and-publish event stream with Express.
+- Organize a service into feature modules, with routes (HTTP) kept separate from services (logic), and `app.js` kept separate from `server.js`.
+- Clean up long-lived connections when clients disconnect, and recognize the leak that happens otherwise.
+- Write a health endpoint, and have Docker check it automatically with a Compose healthcheck.
+
 ## Concepts
 
 ### Server-Sent Events: one response that stays open
