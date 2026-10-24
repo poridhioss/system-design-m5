@@ -11,33 +11,7 @@ In this lab, you'll build a small **live event service**. Clients subscribe once
 
 By the end, you'll have the service running in a container that Docker reports as **healthy**.
 
-```mermaid
-flowchart LR
-    subA["subscriber 1<br/>curl -N /events"]
-    subB["subscriber 2<br/>curl -N /events"]
-    pub["publisher<br/>POST /events"]
-    docker["Docker healthcheck"]
-
-    subgraph container["stream container (Node.js + Express) :8000"]
-        app["app.js"]
-        subgraph events["modules/events"]
-            routes["events.routes.js<br/>HTTP"]
-            service["events.service.js<br/>connected clients<br/>broadcast()"]
-        end
-        subgraph health["modules/health"]
-            hroutes["health.routes.js"]
-        end
-        app --> routes
-        app --> hroutes
-        routes --> service
-        hroutes -->|"clientCount()"| service
-    end
-
-    pub --> routes
-    service -.->|"event stream"| subA
-    service -.->|"event stream"| subB
-    docker -->|"GET /health every 5s"| hroutes
-```
+![alt text](images/1.png)
 
 ## Concepts
 
@@ -119,12 +93,16 @@ This service has no database, so Express is the only dependency. The port defaul
 npm install
 ```
 
-<!-- UNTESTED -->
 ```
-added 65 packages, and audited 66 packages in 3s
+added 65 packages, and audited 66 packages in 6s
+
+29 packages are looking for funding
+  run `npm fund` for details
 
 found 0 vulnerabilities
 ```
+
+npm may also print a notice that a newer npm version is available. You can ignore it.
 
 ## Step 2: Start with the health module
 
@@ -211,7 +189,6 @@ Open a **second terminal** (**Terminal → New Terminal**) and start the service
 cd ~/code/streaming-service && npm run dev
 ```
 
-<!-- UNTESTED -->
 ```
 > dev
 > node --watch src/server.js
@@ -225,9 +202,8 @@ Back in the **first terminal**, ask the service how it's doing:
 curl -sS localhost:8000/health; echo
 ```
 
-<!-- UNTESTED -->
 ```
-{"status":"ok","uptimeSeconds":12,"connectedClients":0}
+{"status":"ok","uptimeSeconds":27,"connectedClients":0}
 ```
 
 ## Step 3: Write the events service
@@ -347,7 +323,7 @@ curl -sS -X POST localhost:8000/events -H 'Content-Type: application/json' \
   -d '{"message":"hello, subscribers"}' -w '\nHTTP %{http_code}\n'
 ```
 
-<!-- UNTESTED -->
+<!-- From a local run with two subscribers (the VM run used one: same output with 1 and deliveredTo 1) -->
 ```
 {"status":"ok","uptimeSeconds":45,"connectedClients":2}
 {"id":1,"message":"hello, subscribers","sentAt":"2026-10-24T03:46:53.074Z","deliveredTo":2}
@@ -356,7 +332,6 @@ HTTP 201
 
 Look at the third and fourth terminals. The message appeared in both at the same moment:
 
-<!-- UNTESTED -->
 ```
 data: {"message":"connected"}
 
@@ -373,7 +348,6 @@ Now press `Ctrl+C` in the **fourth terminal** to disconnect one subscriber, and 
 curl -sS localhost:8000/health; echo
 ```
 
-<!-- UNTESTED -->
 ```
 {"status":"ok","uptimeSeconds":71,"connectedClients":1}
 ```
@@ -385,7 +359,6 @@ curl -sS -X POST localhost:8000/events -H 'Content-Type: application/json' \
   -d '{"message":""}' -w '\nHTTP %{http_code}\n'
 ```
 
-<!-- UNTESTED -->
 ```
 {"error":"message is required"}
 HTTP 400
@@ -401,7 +374,13 @@ In **`src/modules/events/events.routes.js`**, comment out the cleanup line:
   // res.on('close', () => removeClient(res));
 ```
 
-Save, and let the dev server restart. Restarting closes every open connection, so the subscriber in the third terminal ends; press `Ctrl+C` there if curl is still waiting.
+Save, and let the dev server restart. Restarting closes every open connection, so the subscriber in the third terminal ends with this message (press `Ctrl+C` there if curl is still waiting):
+
+```
+curl: (18) transfer closed with outstanding read data remaining
+```
+
+That's expected. An event stream has no natural end, so when the server goes away, curl reports that the response was cut off.
 
 In the **third terminal**, connect and disconnect three times: run `curl -sSN localhost:8000/events`, press `Ctrl+C`, and repeat. Then, in the **first terminal**, check health and publish:
 
@@ -411,10 +390,9 @@ curl -sS -X POST localhost:8000/events -H 'Content-Type: application/json' \
   -d '{"message":"anyone there?"}' -w '\nHTTP %{http_code}\n'
 ```
 
-<!-- UNTESTED -->
 ```
-{"status":"ok","uptimeSeconds":20,"connectedClients":3}
-{"id":1,"message":"anyone there?","sentAt":"2026-10-24T03:47:31.864Z","deliveredTo":3}
+{"status":"ok","uptimeSeconds":120,"connectedClients":3}
+{"id":1,"message":"anyone there?","sentAt":"2026-10-24T04:13:18.476Z","deliveredTo":3}
 HTTP 201
 ```
 
@@ -486,22 +464,20 @@ Build and start it. `--wait` now waits for more than "the container started": it
 docker compose up -d --build --wait
 ```
 
-<!-- UNTESTED -->
 ```
 [+] up 3/3
- ✔ Image streaming-service-stream       Built
- ✔ Network streaming-service_default    Created
- ✔ Container streaming-service-stream-1 Healthy
+ ✔ Image streaming-service-stream       Built          11.7s
+ ✔ Network streaming-service_default    Created         0.0s
+ ✔ Container streaming-service-stream-1 Healthy         5.8s
 ```
 
 ```bash
 docker compose ps
 ```
 
-<!-- UNTESTED -->
 ```
-NAME                         IMAGE                      COMMAND                  SERVICE   CREATED          STATUS                    PORTS
-streaming-service-stream-1   streaming-service-stream   "docker-entrypoint.s…"   stream    15 seconds ago   Up 14 seconds (healthy)   0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
+NAME                         IMAGE                      COMMAND                  SERVICE   CREATED         STATUS                   PORTS
+streaming-service-stream-1   streaming-service-stream   "docker-entrypoint.s…"   stream    8 seconds ago   Up 7 seconds (healthy)   0.0.0.0:8000->8000/tcp, [::]:8000->8000/tcp
 ```
 
 `(healthy)` means Docker called `/health` and got a good answer. To see the checks Docker has run:
@@ -512,23 +488,29 @@ docker inspect --format '{{json .State.Health}}' streaming-service-stream-1 | jq
 
 `docker inspect` shows a container's full state. `--format '{{json .State.Health}}'` picks out just the health part as JSON, and `jq` prints it readably.
 
-<!-- UNTESTED -->
 ```json
 {
   "Status": "healthy",
   "FailingStreak": 0,
   "Log": [
     {
-      "Start": "2026-10-24T03:50:01.120Z",
-      "End": "2026-10-24T03:50:01.310Z",
+      "Start": "2026-10-24T04:15:51.419306858Z",
+      "End": "2026-10-24T04:15:51.702394939Z",
       "ExitCode": 0,
       "Output": ""
-    }
+    },
+    {
+      "Start": "2026-10-24T04:15:56.704537966Z",
+      "End": "2026-10-24T04:15:56.951988581Z",
+      "ExitCode": 0,
+      "Output": ""
+    },
+    ...
   ]
 }
 ```
 
-Each entry in `Log` is one check, and `ExitCode: 0` means it passed.
+(Trimmed: Docker keeps the last five checks.) Each entry in `Log` is one check: they run 5 seconds apart, as `interval: 5s` asked, and `ExitCode: 0` means the check passed. `FailingStreak: 0` means no recent check has failed.
 
 Now the same live test against the container. Subscribe in the **third terminal**:
 
@@ -543,9 +525,8 @@ curl -sS -X POST localhost:8000/events -H 'Content-Type: application/json' \
   -d '{"message":"hello from the container"}' -w '\nHTTP %{http_code}\n'
 ```
 
-<!-- UNTESTED -->
 ```
-{"id":1,"message":"hello from the container","sentAt":"2026-10-24T03:50:30.512Z","deliveredTo":1}
+{"id":1,"message":"hello from the container","sentAt":"2026-10-24T04:17:07.066Z","deliveredTo":1}
 HTTP 201
 ```
 
@@ -557,16 +538,19 @@ Finally, stop it, with the subscriber in the third terminal still connected, and
 time docker compose down
 ```
 
-<!-- UNTESTED -->
 ```
 [+] down 2/2
- ✔ Container streaming-service-stream-1 Removed
- ✔ Network streaming-service_default    Removed
+ ✔ Container streaming-service-stream-1 Removed         10.3s
+ ✔ Network streaming-service_default    Removed          0.1s
 
-real    0m10.6s
+real    0m10.588s
+user    0m0.175s
+sys     0m0.086s
 ```
 
-About **10 seconds** to stop a tiny service. Docker asked the process to stop (it sent `SIGTERM`), but the service has no code that listens for that signal, so it just kept running. After 10 seconds, Docker gave up and killed it (`SIGKILL`), cutting off the subscriber mid-stream. Handling that signal properly, so the service shuts down cleanly and quickly, is part of the next lab.
+`time` runs a command and reports how long it took. `real` is the wall-clock time.
+
+About **10 seconds** to stop a tiny service. Docker asked the process to stop (it sent `SIGTERM`), but the service has no code that listens for that signal, so it just kept running. After 10 seconds, Docker gave up and killed it (`SIGKILL`), cutting off the subscriber mid-stream: the third terminal shows `curl: (18) transfer closed with outstanding read data remaining`. Handling that signal properly, so the service shuts down cleanly and quickly, is part of the next lab.
 
 ## Conclusion
 

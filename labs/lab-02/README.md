@@ -12,26 +12,7 @@ This lab covers three patterns that fix this. For each one, you'll first measure
 
 Everything is measured with plain `curl`, plus a small memory meter built into the app. By the end you'll have a before/after table of latency and memory: your performance profile.
 
-```mermaid
-flowchart LR
-    client["curl"] -->|"HTTP :8000"| app
-
-    subgraph app["Node.js app (Express)"]
-        dash["/dashboard<br/>3 queries"]
-        report["/report<br/>200 queries"]
-        exp["/export<br/>500,000 rows"]
-        mem["/memory<br/>memory meter"]
-    end
-
-    dash --> pool
-    report --> pool
-    exp --> pool
-    pool["pg Pool<br/>10 connections"] -->|"localhost:5432"| pg
-
-    subgraph db["db container"]
-        pg[("PostgreSQL 17<br/>500,000 users")]
-    end
-```
+![alt text](<images/Async Node.js Architecture Diagram.png>)
 
 The app runs directly on the VM with Node.js, and PostgreSQL runs in a Docker container.
 

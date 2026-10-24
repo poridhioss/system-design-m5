@@ -10,22 +10,7 @@ Almost every backend starts with the same job: store some records and let client
 
 In this lab you'll build a small **users API** with Express and PostgreSQL. You'll first run the API directly with Node while Postgres runs in Docker, test every route with a script of `curl` requests, and finally package the API into a container so the whole service starts with one `docker compose` command.
 
-```mermaid
-flowchart LR
-    client["curl / requests.sh"] -->|"HTTP :8000"| json
-
-    subgraph api["api container (Node.js + Express)"]
-        json["express.json()"] --> router["/users router<br/>validate + query"]
-        router --> errors["error handler<br/>400 / 409 / 500"]
-        router --> pool["pg Pool<br/>(10 connections)"]
-    end
-
-    pool -->|"db:5432"| pg
-
-    subgraph db["db container"]
-        pg[("PostgreSQL 17<br/>users table")]
-    end
-```
+![alt text](<images/Client–API–Database Flow Diagram.png>)
 
 By the end of the lab you'll have:
 
