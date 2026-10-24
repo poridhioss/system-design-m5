@@ -1,3 +1,5 @@
+name: production-service
+
 services:
   db:
     image: postgres:17
