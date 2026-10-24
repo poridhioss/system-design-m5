@@ -6,7 +6,7 @@ In the **Express CRUD Service** lab, every handler ran one short query. Real han
 
 This lab covers three patterns that fix this. For each one, you'll first measure the problem and then measure the fix:
 
-1. **From callbacks to async/await.** Refactor a callback-heavy handler into clean async/await, then make it about 3x faster by running independent queries at the same time.
+1. **From callbacks to async/await.** Refactor a callback-heavy handler into clean async/await, then make it more than twice as fast by running independent queries at the same time.
 2. **Concurrency limits.** Watch a batch job grab every database connection while a quick request waits behind it, then fix it with `p-limit`.
 3. **Streaming and backpressure.** Export 500,000 rows, first by loading them all into memory, then by streaming them, and compare memory use and time to first byte.
 
@@ -116,12 +116,16 @@ Install them:
 npm install
 ```
 
-<!-- UNTESTED -->
 ```
-added 83 packages, and audited 84 packages in 4s
+added 83 packages, and audited 84 packages in 7s
+
+31 packages are looking for funding
+  run `npm fund` for details
 
 found 0 vulnerabilities
 ```
+
+npm may also print a notice that a newer npm version is available. You can ignore it.
 
 In the editor, create a file named **`.env`** with these two lines. This is a file, not a command: don't paste it into the terminal.
 
@@ -181,13 +185,12 @@ Start it, and wait until it's healthy:
 docker compose up -d --wait
 ```
 
-<!-- UNTESTED -->
 ```
-[+] up 4/4
- ✔ Image postgres:17         Pulled
- ✔ Network async-lab_default Created
- ✔ Volume async-lab_pgdata   Created
- ✔ Container async-lab-db-1  Healthy
+[+] up 20/20
+ ✔ Image postgres:17         Pulled          16.5s
+ ✔ Volume async-lab_pgdata   Created          0.0s
+ ✔ Network async-lab_default Created          0.1s
+ ✔ Container async-lab-db-1  Healthy         11.9s
 ```
 
 Check that the users are there:
@@ -196,7 +199,6 @@ Check that the users are there:
 docker compose exec db psql -U app -d appdb -c 'SELECT count(*) FROM users'
 ```
 
-<!-- UNTESTED -->
 ```
  count
 --------
@@ -288,7 +290,6 @@ Open a **second terminal** (**Terminal → New Terminal**) and start the server 
 cd ~/code/async-lab && npm run dev
 ```
 
-<!-- UNTESTED -->
 ```
 > dev
 > node --watch --env-file=.env src/server.js
@@ -303,10 +304,9 @@ curl -sS localhost:8000/users/42; echo
 curl -sS localhost:8000/memory; echo
 ```
 
-<!-- UNTESTED -->
 ```
 {"id":42,"name":"User 42","email":"user42@example.com"}
-{"peakMB":62,"nowMB":62}
+{"peakMB":61,"nowMB":59}
 ```
 
 An idle Node.js process uses about 60 MB. Keep that number in mind.
@@ -378,10 +378,9 @@ curl -sS localhost:8000/dashboard-callbacks/42; echo
 curl -sS -o /dev/null -w 'callbacks: %{time_total}s\n' localhost:8000/dashboard-callbacks/42
 ```
 
-<!-- UNTESTED -->
 ```
 {"user":{"id":42,"name":"User 42","email":"user42@example.com"},"firstUser":{"id":1,"name":"User 1"},"newestUser":{"id":500000,"name":"User 500000"}}
-callbacks: 0.340830s
+callbacks: 0.315450s
 ```
 
 Three queries of 100 ms each, one after another: about **0.3 seconds**. Run the timing command a few times; the first request is a little slower, because the pool opens its connections then.
@@ -417,12 +416,11 @@ Save, and time it:
 curl -sS -o /dev/null -w 'async/await: %{time_total}s\n' localhost:8000/dashboard/42
 ```
 
-<!-- UNTESTED -->
 ```
-async/await: 0.333911s
+async/await: 0.408735s
 ```
 
-Much cleaner code, but **the same speed**. Each `await` still waits for its query to finish before the next one starts. The three queries are independent, though, so there's no reason to wait. Replace the whole `/dashboard/:id` route you just added with this version:
+Much cleaner code, but **no faster**: about the same as the callback version (timings vary a little from run to run). Each `await` still waits for its query to finish before the next one starts. The three queries are independent, though, so there's no reason to wait. Replace the whole `/dashboard/:id` route you just added with this version:
 
 ```javascript
 // AFTER: async/await. The three queries don't depend on each other,
@@ -454,13 +452,12 @@ curl -sS -o /dev/null -w 'callbacks:   %{time_total}s\n' localhost:8000/dashboar
 curl -sS -o /dev/null -w 'Promise.all: %{time_total}s\n' localhost:8000/dashboard/42
 ```
 
-<!-- UNTESTED -->
 ```
-callbacks:   0.328797s
-Promise.all: 0.104796s
+callbacks:   0.416734s
+Promise.all: 0.161561s
 ```
 
-About **0.1 seconds**: three 100 ms queries running side by side take as long as one. The same result as before, about 3x faster.
+Well under half the time. The three 100 ms queries now run side by side, so the whole dashboard takes about as long as its slowest query. Same result, more than twice as fast.
 
 ## Step 5: Limit concurrency so one job can't hog the pool
 
@@ -522,13 +519,14 @@ cat /tmp/report.json; echo
 
 Bash also prints lines like `[1] 12345` and `[1]+ Done` for the background job. You can ignore them.
 
-<!-- UNTESTED -->
 ```
-quick request took 0.974772s
-{"users":200,"ms":1294}
+[1] 14867
+quick request took 1.010320s
+[1]+  Done                    curl -sS localhost:8000/report-unlimited > /tmp/report.json
+{"users":200,"ms":1199}
 ```
 
-The quick request normally takes about 2 ms, but here it took almost **a second**. All 200 report queries were sent at once. The pool's 10 connections were taken immediately, and the other 190 queries joined a queue. The quick request had to join the back of that same queue.
+The quick request normally takes a few milliseconds, but here it took about **a second**. All 200 report queries were sent at once. The pool's 10 connections were taken immediately, and the other 190 queries joined a queue. The quick request had to join the back of that same queue.
 
 Now limit the report to 3 queries at a time. In **`src/report.js`**, add this import below the first line (`import { Router } from 'express';`):
 
@@ -563,13 +561,14 @@ wait
 cat /tmp/report.json; echo
 ```
 
-<!-- UNTESTED -->
 ```
-quick request took 0.001888s
-{"users":200,"ms":4147}
+[1] 16295
+quick request took 0.036790s
+[1]+  Done                    curl -sS localhost:8000/report-limited > /tmp/report.json
+{"users":200,"ms":3563}
 ```
 
-The quick request is back to **about 2 ms**. The report only ever holds 3 of the 10 connections, so 7 are always free for other requests. The price is that the report itself takes longer (about 4 seconds instead of 1.3), because it now runs 3 queries at a time instead of 10. That's usually the right trade: one background job finishing a bit later is better than every user waiting.
+The quick request is fast again: **a few hundredths of a second** instead of a full second. The report only ever holds 3 of the 10 connections, so 7 are always free for other requests. The price is that the report itself takes longer (about 3.5 seconds instead of 1.2), because it now runs 3 queries at a time instead of 10. That's usually the right trade: one background job finishing a bit later is better than every user waiting.
 
 ## Step 6: Stream a large export instead of buffering it
 
@@ -617,13 +616,12 @@ curl -sS localhost:8000/memory; echo
 
 `%{time_starttransfer}` is when the first byte of the response arrived. `%{size_download}` is how many bytes came back.
 
-<!-- UNTESTED -->
 ```
-first byte after 0.462021s, done after 0.467961s, 20666699 bytes
-{"peakMB":390,"nowMB":344}
+first byte after 2.394672s, done after 2.401940s, 20666699 bytes
+{"peakMB":288,"nowMB":288}
 ```
 
-Memory jumped from about 60 MB to almost **400 MB** for a 20 MB file. Every row was held as an object, then as a string, then inside one giant string. And the client waited almost half a second before receiving a single byte. With twice the rows, it would need twice the memory; ten users exporting at once would need ten times as much.
+Memory jumped from about 60 MB to almost **300 MB** for a 20 MB file. Every row was held as an object, then as a string, then inside one giant string. And the client waited more than 2 seconds before receiving a single byte. With twice the rows, it would need twice the memory; ten users exporting at once would need ten times as much.
 
 Now the streamed version. In **`src/export.js`**, add these two imports below the first line (`import { Router } from 'express';`):
 
@@ -673,17 +671,16 @@ curl -sS -o /dev/null -w 'first byte after %{time_starttransfer}s, done after %{
 curl -sS localhost:8000/memory; echo
 ```
 
-<!-- UNTESTED -->
 ```
-first byte after 0.036059s, done after 0.963070s, 20666699 bytes
-{"peakMB":121,"nowMB":121}
+first byte after 0.079628s, done after 3.687361s, 20666699 bytes
+{"peakMB":103,"nowMB":103}
 ```
 
 The same 20 MB file, but:
 
-- **Peak memory around 120 MB instead of almost 400.** Only a few batches of rows are in memory at any moment, and that doesn't grow with the size of the table.
+- **Peak memory around 100 MB instead of almost 300.** Only a few batches of rows are in memory at any moment, and that doesn't grow with the size of the table.
 - **First byte almost immediately.** The client starts receiving data while the rest is still being read.
-- **The total time is a bit longer.** Fetching in batches costs more round trips to the database. Streaming trades a little total time for flat memory and a fast start.
+- **The total time is longer.** Fetching in batches costs more round trips to the database, and each row passes through the generator one at a time. Streaming trades total time for flat memory and a fast start.
 
 Check that the file is complete:
 
@@ -691,7 +688,6 @@ Check that the file is complete:
 curl -sS localhost:8000/export-stream -o export.csv && head -3 export.csv && wc -l export.csv
 ```
 
-<!-- UNTESTED -->
 ```
 id,name,email
 1,User 1,user1@example.com
@@ -711,20 +707,18 @@ curl -sS -o /dev/null --limit-rate 1M --max-time 4 -w 'slow client got %{size_do
 curl -sS localhost:8000/memory; echo
 ```
 
-<!-- UNTESTED -->
 ```
-curl: (28) Operation timed out after 4009 milliseconds with 4194304 bytes received
-slow client got 4194304 bytes
-{"peakMB":92,"nowMB":92}
+curl: (28) Operation timed out after 4000 milliseconds with 10548815 bytes received
+slow client got 10548815 bytes
+{"peakMB":105,"nowMB":105}
 ```
 
 The `Operation timed out` message is expected: curl stopped itself after 4 seconds, as `--max-time 4` told it to.
 
-In 4 seconds, the slow client received only about 4 MB of the 20 MB file. Postgres could have produced the rest in under a second, yet the server's memory stayed low. That's backpressure: `pipeline` saw that the response couldn't take more data, so it stopped asking the database for rows until the client caught up. Nothing piled up in memory waiting.
+In 4 seconds, the slow client received only part of the 20 MB file (curl's rate limit isn't exact, so your amount will vary). The server could have read the rest of the table from Postgres in that time, yet its memory stayed at the same level as a normal streamed export. That's backpressure: `pipeline` saw that the response couldn't take more data, so it stopped asking the database for rows until the client caught up. Nothing piled up in memory waiting.
 
 Look at the **second terminal**. When curl gave up, the server logged:
 
-<!-- UNTESTED -->
 ```
 stream stopped early: Premature close
 ```
@@ -737,12 +731,12 @@ Here are the measurements from this lab in one table. Fill in the right-hand col
 
 | Pattern | Measurement | Before | After | Your numbers |
 |---|---|---|---|---|
-| Callbacks → `Promise.all` | Dashboard latency | 0.33 s (callbacks) | 0.10 s (`Promise.all`) | |
-| Unlimited → `p-limit(3)` | Quick request during the report | 0.97 s | 0.002 s | |
-| Unlimited → `p-limit(3)` | Report duration | 1.3 s | 4.1 s | |
-| Buffered → streamed | Peak memory (idle: about 60 MB) | 390 MB | 121 MB | |
-| Buffered → streamed | Time to first byte | 0.46 s | 0.04 s | |
-| Buffered → streamed | Total export time | 0.47 s | 0.96 s | |
+| Callbacks → `Promise.all` | Dashboard latency | 0.32 s (callbacks) | 0.16 s (`Promise.all`) | |
+| Unlimited → `p-limit(3)` | Quick request during the report | 1.01 s | 0.04 s | |
+| Unlimited → `p-limit(3)` | Report duration | 1.2 s | 3.6 s | |
+| Buffered → streamed | Peak memory (idle: about 60 MB) | 288 MB | 103 MB | |
+| Buffered → streamed | Time to first byte | 2.39 s | 0.08 s | |
+| Buffered → streamed | Total export time | 2.40 s | 3.69 s | |
 
 Not every "after" number is smaller, and that's the point. Each fix trades something:
 
@@ -754,9 +748,9 @@ Not every "after" number is smaller, and that's the point. Each fix trades somet
 
 You took three handlers that worked but behaved badly, measured each problem, and fixed it:
 
-- **Callbacks → async/await.** The callback pyramid became flat, readable code with automatic error handling. Then `Promise.all` ran the independent queries side by side and cut latency from 0.3 s to 0.1 s.
-- **Unlimited → limited concurrency.** `Promise.all` over 200 queries took all 10 pool connections and made a 2 ms request wait a second. `p-limit` capped the job at 3 connections, so other requests stayed fast.
-- **Buffered → streamed.** Loading 500,000 rows at once used about 400 MB and delayed the first byte. Streaming them with `pg-query-stream` and `pipeline` kept memory flat and started the download immediately.
+- **Callbacks → async/await.** The callback pyramid became flat, readable code with automatic error handling. Then `Promise.all` ran the independent queries side by side and cut latency by more than half.
+- **Unlimited → limited concurrency.** `Promise.all` over 200 queries took all 10 pool connections and made a quick request wait about a second. `p-limit` capped the job at 3 connections, so other requests stayed fast.
+- **Buffered → streamed.** Loading 500,000 rows at once used almost 300 MB and delayed the first byte by more than 2 seconds. Streaming them with `pg-query-stream` and `pipeline` kept memory flat and started the download immediately.
 - **Backpressure.** With a slow client, `pipeline` paused the database instead of piling rows up in memory.
 - **Stream errors are different.** A stream that fails halfway has already sent its status, so all the server can do is stop, log it and release its resources.
 
