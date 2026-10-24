@@ -107,13 +107,15 @@ labs/lab-04/app/
     └── smoke.test.js         one example test (Task 4)
 ```
 
-The code from the earlier labs is right next to it, ready to copy from:
+The code from the earlier labs is in the same repository, in the folders next to `lab-04` (in the editor's Explorer, look under `labs/`). The paths below start at the repository root, `~/code/system-design-m5`:
 
 | Earlier lab | Code |
 |---|---|
 | **Express CRUD Service** | `labs/lab-01/app/src/users.js` |
 | **Async Patterns & Backpressure** | `labs/lab-02/app/src/dashboard.js`, `report.js`, `export.js` |
 | **Modular Streaming Service** | `labs/lab-03/app/src/modules/events/` |
+
+You'll work inside `labs/lab-04/app`, so from there the earlier labs are two folders up: `labs/lab-01/app/src/users.js` is `../../lab-01/app/src/users.js`.
 
 Start the stack. It already runs: it just doesn't do much yet.
 
@@ -203,7 +205,14 @@ For the events module, subscribe in a second terminal with `curl -sSN localhost:
 <details>
 <summary>Solution: <code>src/modules/users/users.routes.js</code></summary>
 
-Copy `labs/lab-01/app/src/users.js` to `src/modules/users/users.routes.js`. The only change is the pool import on line 2:
+Copy the users routes from the **Express CRUD Service** lab. Run this from `labs/lab-04/app`:
+
+```bash
+mkdir -p src/modules/users
+cp ../../lab-01/app/src/users.js src/modules/users/users.routes.js
+```
+
+Then open `src/modules/users/users.routes.js`. The only change is the pool import on line 2, because the file is now two folders deeper:
 
 ```javascript
 import { pool } from '../../db.js';
@@ -283,7 +292,12 @@ The dashboard also validates its `id` now. Without that check, a request like `/
 <details>
 <summary>Solution: the events module and <code>src/app.js</code></summary>
 
-Copy `labs/lab-03/app/src/modules/events/events.routes.js` and `events.service.js` into `src/modules/events/` unchanged.
+Copy the events module from the **Modular Streaming Service** lab unchanged. Run this from `labs/lab-04/app`:
+
+```bash
+mkdir -p src/modules/events
+cp ../../lab-03/app/src/modules/events/events.routes.js ../../lab-03/app/src/modules/events/events.service.js src/modules/events/
+```
 
 Then, in `src/app.js`, replace the first `TODO` with these imports:
 
