@@ -125,14 +125,13 @@ docker compose up -d --build --wait
 
 The first run downloads two images and builds one, so it prints a lot of progress output, and the progress lines may redraw themselves many times. That's normal. Wait for the prompt to come back: the run is done when both containers show `Healthy`.
 
-<!-- UNTESTED -->
 ```
 [+] up 5/5
- ✔ Image production-service-api       Built
- ✔ Network production-service_default Created
- ✔ Volume production-service_pgdata   Created
- ✔ Container production-service-db-1  Healthy
- ✔ Container production-service-api-1 Healthy
+ ✔ Image production-service-api       Built          1.6s
+ ✔ Network production-service_default Created         0.0s
+ ✔ Volume production-service_pgdata   Created         0.0s
+ ✔ Container production-service-db-1  Healthy         3.6s
+ ✔ Container production-service-api-1 Healthy         8.6s
 ```
 
 Run the smoke tests. The test file runs on the VM against the stack you just started:
@@ -341,12 +340,35 @@ docker compose up -d --wait
 curl -sS localhost:8000/health -w '\nHTTP %{http_code}\n'
 ```
 
+Run this once **before** you change anything, to see the problem. The starting health check says `ok` even while the database is stopped:
+
+```
+{"status":"ok","uptimeSeconds":44}
+HTTP 200
+[+] stop 1/1
+ ✔ Container production-service-db-1 Stopped          0.2s
+{"status":"ok","uptimeSeconds":45}
+HTTP 200
+[+] up 2/2
+ ✔ Container production-service-api-1 Healthy         3.3s
+ ✔ Container production-service-db-1  Healthy         3.2s
+{"status":"ok","uptimeSeconds":48}
+HTTP 200
+```
+
+A load balancer trusting this would keep sending users to an instance that can't answer them. **After** your change, the middle check must tell the truth:
+
 <!-- UNTESTED -->
 ```
 {"status":"ok","uptimeSeconds":8,"connectedClients":0}
 HTTP 200
+[+] stop 1/1
+ ✔ Container production-service-db-1 Stopped
 {"status":"database unavailable"}
 HTTP 503
+[+] up 2/2
+ ✔ Container production-service-api-1 Healthy
+ ✔ Container production-service-db-1  Healthy
 {"status":"ok","uptimeSeconds":31,"connectedClients":0}
 HTTP 200
 ```
@@ -438,18 +460,37 @@ docker compose ps -a api
 
 `docker compose ps -a` also lists stopped containers, so you can see the exit code.
 
-<!-- UNTESTED -->
+**Before** Task 3, the service ignores `SIGTERM`, so this is what happens:
+
 ```
 [+] stop 1/1
- ✔ Container production-service-api-1 Stopped
+ ✔ Container production-service-api-1 Stopped        10.3s
 
-real    0m0.6s
+real    0m10.537s
+user    0m0.179s
+sys     0m0.107s
+api-1  | service listening on port 8000
+NAME                       IMAGE                    COMMAND                  SERVICE   CREATED              STATUS                                PORTS
+production-service-api-1   production-service-api   "docker-entrypoint.s…"   api       About a minute ago   Exited (137) Less than a second ago
+```
 
+Ten seconds, nothing in the logs after startup, and exit code `137`. An exit code above 128 means the process was killed by a signal: 137 is 128 + 9, and signal 9 is `SIGKILL`. Docker waited 10 seconds for a reaction to `SIGTERM`, got none, and killed it.
+
+**After** Task 3:
+
+```
+[+] stop 1/1
+ ✔ Container production-service-api-1 Stopped         0.2s
+
+real    0m0.331s
+user    0m0.098s
+sys     0m0.031s
+api-1  | service listening on port 8000
 api-1  | SIGTERM received, shutting down
 api-1  | all connections closed
 api-1  | database pool closed, exiting
-NAME                       IMAGE                    COMMAND                  SERVICE   CREATED          STATUS                     PORTS
-production-service-api-1   production-service-api   "docker-entrypoint.s…"   api       2 minutes ago    Exited (0) 1 second ago
+NAME                       IMAGE                    COMMAND                  SERVICE   CREATED          STATUS                              PORTS
+production-service-api-1   production-service-api   "docker-entrypoint.s…"   api       10 seconds ago   Exited (0) Less than a second ago
 ```
 
 What to look for:
@@ -552,18 +593,17 @@ With the existing health test, that's seven tests. The tests must clean up after
 npm test
 ```
 
-<!-- UNTESTED -->
 ```
 > test
 > node --test
 
-✔ health: the service reports ok (229.281ms)
-✔ users: create, read and delete a user (57.8938ms)
-✔ users: an invalid user is rejected with 400 (3.2205ms)
-✔ reports: the dashboard returns all three parts (51.2679ms)
-✔ reports: the dashboard of a missing user is 404 (2.8307ms)
-✔ events: a subscriber receives a published message (32.031ms)
-✔ events: publishing an empty message is rejected with 400 (5.4793ms)
+✔ health: the service reports ok (87.01818ms)
+✔ users: create, read and delete a user (51.603513ms)
+✔ users: an invalid user is rejected with 400 (8.186798ms)
+✔ reports: the dashboard returns all three parts (39.262498ms)
+✔ reports: the dashboard of a missing user is 404 (5.886778ms)
+✔ events: a subscriber receives a published message (19.278337ms)
+✔ events: publishing an empty message is rejected with 400 (6.882172ms)
 ℹ tests 7
 ℹ suites 0
 ℹ pass 7
@@ -571,8 +611,10 @@ npm test
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 480.3099
+ℹ duration_ms 432.935286
 ```
+
+If every test fails with `fetch failed` and `ECONNREFUSED 127.0.0.1:8000`, the API isn't running (for example, you stopped it in Task 3). Start it with `docker compose up -d --wait` and run the tests again.
 
 <details>
 <summary>Hint</summary>
