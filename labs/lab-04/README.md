@@ -17,28 +17,7 @@ Real services aren't three separate apps. In this lab, which is a **task** rathe
 
 You get a working starting point: a service skeleton with its Docker setup already done, plus the code from the earlier labs to copy from. Each task below says what to build and how to check it. Every task also has a hint and a full solution in collapsible blocks. Try it yourself first. AI tools are allowed: if you use one, make sure you understand and can explain what it wrote.
 
-```mermaid
-flowchart LR
-    client["curl / npm test"] -->|"HTTP :8000"| app
-    docker["Docker"] -->|"healthcheck: GET /health<br/>stop: SIGTERM"| app
-
-    subgraph api["api container"]
-        server["server.js<br/>listen + graceful shutdown"] --> app["app.js"]
-        app --> health["modules/health"]
-        app --> users["modules/users<br/>CRUD"]
-        app --> reports["modules/reports<br/>dashboard, batch, export"]
-        app --> events["modules/events<br/>live event stream"]
-        health --> pool
-        users --> pool
-        reports --> pool["pg Pool<br/>10 connections"]
-    end
-
-    pool -->|"db:5432"| pg
-
-    subgraph db["db container"]
-        pg[("PostgreSQL 17<br/>10,000 users")]
-    end
-```
+![alt text](<images/Containerized Web Service Architecture.png>)
 
 ## Objectives
 
