@@ -123,6 +123,8 @@ Start the stack. It already runs: it just doesn't do much yet.
 docker compose up -d --build --wait
 ```
 
+The first run downloads two images and builds one, so it prints a lot of progress output, and the progress lines may redraw themselves many times. That's normal. Wait for the prompt to come back: the run is done when both containers show `Healthy`.
+
 <!-- UNTESTED -->
 ```
 [+] up 5/5
@@ -139,17 +141,19 @@ Run the smoke tests. The test file runs on the VM against the stack you just sta
 npm test
 ```
 
-<!-- UNTESTED -->
 ```
 > test
 > node --test
 
-✔ health: the service reports ok (25.1ms)
+✔ health: the service reports ok (132.669985ms)
 ℹ tests 1
 ℹ suites 0
 ℹ pass 1
 ℹ fail 0
-...
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 281.669173
 ```
 
 One test, passing. By the end, there will be seven.
@@ -179,16 +183,17 @@ curl -sS localhost:8000/reports/batch; echo
 curl -sS localhost:8000/reports/export -o /tmp/export.csv && head -3 /tmp/export.csv
 ```
 
-<!-- UNTESTED -->
 ```
-{"id":10001,"name":"Ada Lovelace","email":"ada@example.com","created_at":"2026-10-24T05:20:11.482Z"}
+{"id":10001,"name":"Ada Lovelace","email":"ada@example.com","created_at":"2026-10-24T10:45:58.069Z"}
 HTTP 201
 {"user":{"id":42,"name":"User 42","email":"user42@example.com"},"firstUser":{"id":1,"name":"User 1"},"newestUser":{"id":10001,"name":"Ada Lovelace"}}
-{"users":200,"ms":40}
+{"users":200,"ms":85}
 id,name,email
 1,User 1,user1@example.com
 2,User 2,user2@example.com
 ```
+
+Before the modules exist, each of these answers `{"error":"route not found"}` with a `404`.
 
 For the events module, subscribe in a second terminal with `curl -sSN localhost:8000/events`, and publish from the first terminal, as in the **Modular Streaming Service** lab.
 
