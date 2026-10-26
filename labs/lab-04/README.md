@@ -710,15 +710,7 @@ Think about what you saw in this module: the error handler's special case for st
 
 An async/await route fails before it responds, so the error is thrown, reaches the central error handler, and becomes a clean `400`/`500` JSON response. A stream can fail after the `200` and part of the body have already been sent, so the handler can only log it and close the connection, and `finally` must release the database connection. Event streams never end on their own, so they also need explicit cleanup on disconnect and at shutdown.
 
-> **DIAGRAM PLACEHOLDER** `images/error-before-vs-after-headers.png` (priority: high)
->
-> - **Title:** It's all about *when* the error happens: before the response vs. in the middle of it
-> - **Type:** two horizontal sequence strips (top: "async/await route", bottom: "streamed export"), each showing what has already been sent to the client when an error strikes
-> - **Show:**
->   - **Top strip, "async/await route" (e.g. `GET /reports/dashboard/42`):** `request arrives` → `await pool.query(...)` → red lightning `query fails` → arrow to `error handler` → `res.status(500).json({ error })`. The client receives one complete, clean response: a card labeled `500 Internal Server Error` + `{"error":"internal server error"}`. Above the strip, a marker `nothing sent yet` covering everything before the error, in green.
->   - **Bottom strip, "streamed export" (`GET /reports/export`):** `request arrives` → `200 OK + headers sent` → a stream of CSV row chunks flowing to the client (`id,name,email`, `1,User 1,...`, `2,User 2,...`) → red lightning `error mid-stream (or client disconnects)`. Above the strip, a marker `status and part of the body already sent`, starting at the `200 OK` point, in orange. A crossed-out bubble at the error point: `can't change 200 into 500 any more ✗`. Instead, three actions branch off the error: `log "stream stopped early"`, `res.destroy(): close the connection`, `finally { client.release() }: give the DB connection back`. The client side shows a torn, incomplete CSV labeled `cut-off response`.
-> - **Takeaway (caption under the image):** An async route fails before it has said anything, so it can still answer with a clean error. A stream has already promised `200` and sent part of the body, so all it can do is stop, log, and release what it holds.
-> - **Style:** match `images/Containerized Web Service Architecture.png`: Reports module purple for the route boxes, success green, errors red, the partial response orange.
+![An async route that fails before responding still sends a clean 500 with {"error":"internal server error"}; a streamed export that fails after 200 and part of the CSV can only log, close the connection and release its database connection](images/error-before-vs-after-headers.png)
 
 **2. What would break first under load?**
 
