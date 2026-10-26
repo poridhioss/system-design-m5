@@ -50,11 +50,36 @@ takes 200 ms, even if B doesn't need A's result. When queries are independent, s
 const [a, b] = await Promise.all([queryA(), queryB()]);   // about 100 ms
 ```
 
+> **DIAGRAM PLACEHOLDER** `images/sequential-vs-parallel.png` (priority: high)
+>
+> - **Title:** The same three queries: one after another vs. all at once
+> - **Type:** timeline (Gantt-style), three stacked panels sharing one time axis from 0 to 300 ms
+> - **Show:**
+>   - A horizontal time axis at the bottom: `0 ms`, `100 ms`, `200 ms`, `300 ms`.
+>   - **Panel 1, "Callbacks (nested)":** three bars placed end to end: `profile query` (0–100 ms), `first member query` (100–200 ms), `newest member query` (200–300 ms). Small curved arrows between them labeled "starts inside the previous callback". Total on the right: `≈ 300 ms`.
+>   - **Panel 2, "async/await, one by one":** the same three bars end to end, labeled with `await` at each start. Total: `≈ 300 ms`. A note: "cleaner code, same speed".
+>   - **Panel 3, "Promise.all":** the three bars stacked vertically, all spanning 0–100 ms (they overlap in time). A bracket over them: `Promise.all waits for all three`. Total: `≈ 100 ms`.
+>   - Under each panel, a thin lane labeled `Node.js thread` that is almost empty: only tiny tick marks where a query is sent and where a result arrives, the rest labeled "free: serving other requests". This shows that waiting for the database doesn't occupy the thread.
+>   - Each query bar sits on a lane labeled `PostgreSQL (pg_sleep 0.1 s)`, to show the waiting happens in the database, not in Node.
+> - **Takeaway (caption under the image):** `await` doesn't start anything, it only waits. Independent queries started together with `Promise.all` take as long as the slowest one, not the sum. Measured on the VM: 0.32 s with callbacks vs. 0.16 s with `Promise.all`.
+> - **Style:** match `images/Async Node.js Architecture Diagram.png`: use the dashboard's green for the query bars, light blue for the Node.js thread lane.
+
 ### Too much at once: concurrency limits
 
 The connection pool has 10 connections. Think of them as 10 checkout counters in a shop. `Promise.all` over 200 queries sends all 200 customers to the counters at once. The 10 counters are taken immediately, and everyone else, including a customer who just wants to buy one thing, waits in the same line.
 
 A **concurrency limit** lets the batch job use only a few counters at a time (here, 3). The job itself takes a little longer, but the other 7 counters stay free for everyone else. The `p-limit` package does exactly this: it runs at most N tasks at once and queues the rest.
+
+> **DIAGRAM PLACEHOLDER** `images/pool-starvation.png` (priority: high)
+>
+> - **Title:** 200 report queries vs. one quick request, with and without a concurrency limit
+> - **Type:** two side-by-side panels (left: "Promise.all, no limit", right: "p-limit(3)"), drawn as checkout counters with a waiting line
+> - **Show:**
+>   - **Both panels:** a box `pg Pool` containing exactly **10 slots** drawn as 10 checkout counters, each connected to a `PostgreSQL` cylinder on the far side. Report queries are purple tokens labeled `report`; the quick request (`GET /users/1`) is one orange token with a stopwatch.
+>   - **Left panel, "Promise.all, no limit":** all 10 counters occupied by purple `report` tokens. In front of the pool, a long queue labeled `pool queue: 190 waiting`. The orange quick-request token stands at the **back** of that queue. Stopwatch label: `quick request: 1.01 s`. Footer: `report finishes in 1.2 s`.
+>   - **Right panel, "p-limit(3)":** a separate box in front of the pool labeled `p-limit(3)` holding a queue of 197 purple tokens (`waiting in the limiter, not in the pool`). Only **3** counters are occupied by purple tokens; **7** counters are empty and highlighted green (`free for everyone else`). The orange quick-request token goes straight to a free counter. Stopwatch label: `quick request: 0.04 s`. Footer: `report finishes in 3.6 s (slower, on purpose)`.
+> - **Takeaway (caption under the image):** Without a limit, one batch job takes every connection and everyone queues behind it. With `p-limit(3)`, the job runs slower but 7 connections stay free, so other requests stay fast. (Numbers from a real VM run.)
+> - **Style:** match `images/Async Node.js Architecture Diagram.png`: purple as on the `/report` box, the pg Pool in its blue, PostgreSQL in its green box.
 
 ### Buffering vs. streaming
 
@@ -62,11 +87,43 @@ The simple way to send a big result is to load every row into memory, build one 
 
 **Streaming** sends data in small pieces as it arrives, like processing a huge input line by line instead of reading the whole file first. Here, rows come from Postgres 1,000 at a time and go straight to the client, so only a small part of the table is ever in memory.
 
+> **DIAGRAM PLACEHOLDER** `images/buffered-vs-streamed-memory.png` (priority: high)
+>
+> - **Title:** Exporting 500,000 rows: memory over time, buffered vs. streamed
+> - **Type:** line chart (memory in MB on the y-axis, time in seconds on the x-axis), with a small "what's in memory" inset for each line
+> - **Show:**
+>   - Y-axis from 0 to 300 MB, with a dashed horizontal line at `≈ 60 MB: idle Node.js process`. X-axis from 0 to 4 s.
+>   - **Orange line, "buffered":** flat at about 60 MB, then climbs steeply to a peak of **288 MB**. A marker `first byte: 2.39 s` sits at the very end, right next to `done: 2.40 s`, showing that the client got nothing until everything was ready.
+>   - **Blue line, "streamed":** rises gently from about 60 MB and stays nearly flat, peaking at about **103 MB**. A marker `first byte: 0.08 s` at the very start, and `done: 3.69 s` at the end.
+>   - **Inset next to the orange line:** three stacked blocks growing in size: `500,000 row objects` → `500,000 CSV strings` → `one 20 MB string`, all held at once.
+>   - **Inset next to the blue line:** one small block `≈ 1,000 rows (one batch)` with a circular arrow "fetch → send → next batch".
+> - **Takeaway (caption under the image):** Buffering holds the whole table in memory and makes the client wait for the first byte. Streaming keeps memory flat and starts sending immediately, at the cost of a longer total time. (Numbers from a real VM run.)
+> - **Style:** match `images/Async Node.js Architecture Diagram.png`: orange as on the `/export` box for "buffered"; blue for "streamed".
+
 ### Backpressure
 
 What if the client downloads slowly? Postgres can produce rows much faster than a slow connection can carry them. Picture a bathtub: the tap (the database) pours water in, and the drain (the client's connection) lets it out. If the tap is faster than the drain, the tub overflows.
 
 **Backpressure** is the drain saying "I'm full, slow down". Node's `pipeline()` connects the database stream to the response and handles this for you: when the client falls behind, it pauses reading from the database until the client catches up. The whole chain runs at the speed of its slowest part, and memory stays small.
+
+> **DIAGRAM PLACEHOLDER** `images/backpressure-pipeline.png` (priority: high)
+>
+> - **Title:** Backpressure: a slow client slows down the database, instead of filling memory
+> - **Type:** left-to-right pipeline diagram with small buffers between stages, plus a "signal" path flowing right-to-left
+> - **Show:**
+>   - Five stages left to right, connected by pipes:
+>     1. `PostgreSQL` cylinder with a cursor icon, labeled `cursor: rows on demand`
+>     2. `QueryStream` labeled `fetches 1,000 rows per batch`
+>     3. `async function*` labeled `row → CSV line`
+>     4. `res` labeled `HTTP response`
+>     5. a laptop `slow client` labeled `downloads at 1 MB/s`
+>   - Between each pair of stages, a small tank (buffer) drawn partly filled. The tank right before the slow client is **full** (red, labeled `buffer full: write() returns false`).
+>   - Above the pipeline, red dashed arrows travel **right to left**, from the full tank back through every stage to PostgreSQL, labeled `"pause": stop reading`. Below the pipeline, green dashed arrows labeled `'drain': room again → resume`.
+>   - A large bracket around stages 2–4 labeled `pipeline(rows, transform, res)`: "handles pause and resume for you".
+>   - Small bathtub icon in a corner: tap = `database`, tub = `buffers`, drain = `client connection`, as in the Concepts text.
+>   - Footer with real numbers: `slow client got 10.5 MB in 4 s; server memory stayed at 105 MB`.
+> - **Takeaway (caption under the image):** When the client can't keep up, `pipeline()` stops reading from the database, so the whole chain moves at the client's speed and nothing piles up in memory.
+> - **Style:** match `images/Async Node.js Architecture Diagram.png`: PostgreSQL green, Node.js stages light blue, the "pause" signal red, "resume" green.
 
 ## Step 1: Create the project and start PostgreSQL
 

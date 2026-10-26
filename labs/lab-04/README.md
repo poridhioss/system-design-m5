@@ -44,6 +44,25 @@ A **graceful shutdown** listens for `SIGTERM` and closes down in order:
 
 Plus a **safety net**: a timer that forces the process to exit if any of this hangs, so it exits on its own terms before Docker's `SIGKILL` arrives.
 
+> **DIAGRAM PLACEHOLDER** `images/graceful-shutdown-timeline.png` (priority: high)
+>
+> - **Title:** `docker compose stop`: ignoring `SIGTERM` vs. a graceful shutdown
+> - **Type:** two horizontal timelines on a shared time axis from 0 to 10.5 s (top: "Before: no handler", bottom: "After: graceful shutdown"); the bottom one gets a zoomed-in callout because it's so short
+> - **Show:**
+>   - Time axis: `0 s` ... `10 s` ... `10.5 s`. At 0 s on both rows, a Docker whale sends a `SIGTERM` lightning bolt to the `api` process.
+>   - **Top row, "Before":** a long grey bar from 0 to 10 s labeled `SIGTERM ignored, still running`. An open event-stream connection (orange) runs along the bar. At 10 s, Docker sends `SIGKILL` (red skull or red bolt); the process box shatters; the orange stream is cut with a jagged red end labeled `subscriber cut off: curl (18) transfer closed`. End badge: `Exited (137)` with a note `137 = 128 + 9 (SIGKILL)`. Total: `10.5 s`.
+>   - **Bottom row, "After":** a very short segment near 0 s, with a zoomed-in callout box (0 ms → ~300 ms) showing the steps of `shutdown()` in order, each as a numbered chip:
+>     1. `state.shuttingDown = true` → small side note `/health now answers 503`
+>     2. `server.close()`: "no new connections"
+>     3. `closeAllClients()`: the orange event stream ends cleanly with a green check, labeled `subscriber's stream ends normally`
+>     4. `all connections closed`
+>     5. `pool.end()`: "database connections closed"
+>     6. `process.exit(0)`
+>     End badge: `Exited (0)`. Total: `0.33 s`.
+>   - Under the bottom row, a dashed timer line from 0 to 8 s labeled `safety net: force exit after SHUTDOWN_TIMEOUT_MS (8 s), before Docker's 10 s SIGKILL`; it's never reached in a normal shutdown.
+> - **Takeaway (caption under the image):** Without a handler, Docker waits 10 seconds and then kills the service mid-stream. With one, the service stops in the right order and exits cleanly in a fraction of a second. (Numbers from a real VM run.)
+> - **Style:** match `images/Containerized Web Service Architecture.png`: Docker purple, the API in its dark-blue container color, events in their red/pink module color for the stream; success green, kill red.
+
 ### A health check that tells the truth
 
 In the **Modular Streaming Service** lab, `/health` answered `ok` as long as the process was running. But a service whose database is unreachable can't serve users, even though its process is running fine. A truthful health check asks: *can this instance do its job right now?*
@@ -707,6 +726,16 @@ Think about what you saw in this module: the error handler's special case for st
 **1. Where did async/await and streams need different error handling?**
 
 An async/await route fails before it responds, so the error is thrown, reaches the central error handler, and becomes a clean `400`/`500` JSON response. A stream can fail after the `200` and part of the body have already been sent, so the handler can only log it and close the connection, and `finally` must release the database connection. Event streams never end on their own, so they also need explicit cleanup on disconnect and at shutdown.
+
+> **DIAGRAM PLACEHOLDER** `images/error-before-vs-after-headers.png` (priority: high)
+>
+> - **Title:** It's all about *when* the error happens: before the response vs. in the middle of it
+> - **Type:** two horizontal sequence strips (top: "async/await route", bottom: "streamed export"), each showing what has already been sent to the client when an error strikes
+> - **Show:**
+>   - **Top strip, "async/await route" (e.g. `GET /reports/dashboard/42`):** `request arrives` → `await pool.query(...)` → red lightning `query fails` → arrow to `error handler` → `res.status(500).json({ error })`. The client receives one complete, clean response: a card labeled `500 Internal Server Error` + `{"error":"internal server error"}`. Above the strip, a marker `nothing sent yet` covering everything before the error, in green.
+>   - **Bottom strip, "streamed export" (`GET /reports/export`):** `request arrives` → `200 OK + headers sent` → a stream of CSV row chunks flowing to the client (`id,name,email`, `1,User 1,...`, `2,User 2,...`) → red lightning `error mid-stream (or client disconnects)`. Above the strip, a marker `status and part of the body already sent`, starting at the `200 OK` point, in orange. A crossed-out bubble at the error point: `can't change 200 into 500 any more ✗`. Instead, three actions branch off the error: `log "stream stopped early"`, `res.destroy(): close the connection`, `finally { client.release() }: give the DB connection back`. The client side shows a torn, incomplete CSV labeled `cut-off response`.
+> - **Takeaway (caption under the image):** An async route fails before it has said anything, so it can still answer with a clean error. A stream has already promised `200` and sent part of the body, so all it can do is stop, log, and release what it holds.
+> - **Style:** match `images/Containerized Web Service Architecture.png`: Reports module purple for the route boxes, success green, errors red, the partial response orange.
 
 **2. What would break first under load?**
 

@@ -78,9 +78,41 @@ Every `app.use(...)` adds a function to a list, and Express runs each request th
 
 In **Express 5**, which this lab uses, if an `async` route handler throws (for example, a query fails), Express automatically sends the error to the error handler. You don't need a `try/catch` in every route.
 
+> **DIAGRAM PLACEHOLDER** `images/request-pipeline.png` (priority: high)
+>
+> - **Title:** One request through the Express pipeline, and where each status code comes from
+> - **Type:** left-to-right flowchart with exit branches (a "pipeline" with labeled exits)
+> - **Show:**
+>   - Start on the left: a client box `curl` sending `POST /users` with body `{"name":"Ada","email":"ada@example.com"}`.
+>   - Four stages in a row, left to right, inside one big box labeled `Express app (Node.js)`:
+>     1. `express.json()`: "parse the body into req.body"
+>     2. `/users router`: "validate the input"
+>     3. `pool.query(...)`: "INSERT ... VALUES ($1, $2)" with an arrow down to a `PostgreSQL` cylinder labeled `users table`
+>     4. `res.status(201).json(user)`: the success exit on the far right, arrow back to the client labeled `201 Created`
+>   - Red exit arrows dropping down from the stages, each labeled with its status code and cause:
+>     - from `express.json()`: `400`: "body is not valid JSON"
+>     - from `/users router`: `400`: "name is required / invalid email / id like abc" and `404`: "no user with that id"
+>     - from `pool.query`: an arrow into a separate box `error handler (err, req, res, next)`, which has two exits: `409`: "email already exists (Postgres code 23505)" and `500`: "anything else (bug, database down)"
+>   - A grey box at the bottom: `not-found handler` with exit `404`: "no route matched (e.g. /nope)"
+>   - A small note on the error-handler box: "Express 5 sends errors from async routes here automatically"
+>   - Every error exit ends in the same response shape: `{ "error": "..." }`
+> - **Takeaway (caption under the image):** Every request walks the same chain; each status code comes from one specific place in it, and every error leaves in the same `{ "error": ... }` shape.
+> - **Style:** match `images/Client–API–Database Flow Diagram.png` (blue Express/API box, red-bordered PostgreSQL, white background); success path in green, error exits in red.
+
 ### Containers talk by service name
 
 Inside Docker Compose, each service is its own container. From the API container, `localhost` means *the API container itself*, not the database. Containers reach each other by **service name**, so the API connects to `db:5432`. When you run the API directly on the VM instead, Postgres is reachable at `localhost:5432` because Compose publishes that port to the VM.
+
+> **DIAGRAM PLACEHOLDER** `images/localhost-vs-service-name.png` (priority: high)
+>
+> - **Title:** Same database, two addresses: `localhost:5432` from the VM, `db:5432` from a container
+> - **Type:** two side-by-side panels (left: "Development, Steps 3–7", right: "Containerized, Step 8")
+> - **Show:**
+>   - **Left panel:** a large box `Poridhi VM`. Inside it, on the left, a plain box `Node.js API (npm run dev)` running directly on the VM, reading `.env`: `DATABASE_URL=postgres://app:app@localhost:5432/appdb`. On the right, a Docker container box `db (PostgreSQL 17)`. The arrow from the API goes to a port symbol on the VM labeled `127.0.0.1:5432 (published by Compose)`, and from there into the `db` container's port `5432`. Arrow label: `localhost:5432`.
+>   - **Right panel:** the same `Poridhi VM` box. Inside it, a dashed box `Compose network: users-api_default` containing two containers: `api (Node.js)` and `db (PostgreSQL 17)`. The arrow goes directly from `api` to `db`, labeled `db:5432 (service name)`. On the `api` container, show its env: `DATABASE_URL=postgres://app:app@db:5432/appdb`. Outside the network, the `curl` client reaches `api` through the published port `0.0.0.0:8000 → 8000`.
+>   - In the right panel, a red crossed-out dashed arrow from `api` that loops back into the `api` container itself, labeled `localhost:5432 ✗ (this is the api container itself)`.
+> - **Takeaway (caption under the image):** From the VM, the database is `localhost:5432` (a published port); from another container, it's `db:5432` (the Compose service name). Inside a container, `localhost` means that container.
+> - **Style:** match `images/Client–API–Database Flow Diagram.png` (Docker whale on container boxes, red-bordered PostgreSQL, blue API).
 
 ## Step 1: Check your tools and create the project
 
