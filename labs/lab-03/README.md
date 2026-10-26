@@ -11,7 +11,7 @@ In this lab, you'll build a small **live event service**. Clients subscribe once
 
 By the end, you'll have the service running in a container that Docker reports as **healthy**.
 
-![alt text](images/1.png)
+![Architecture: a publisher posts to the events module, subscribers receive event streams, and Docker's healthcheck calls the health module every 5 seconds](images/1.png)
 
 ## Objectives
 
@@ -39,16 +39,7 @@ data: {"id":1,"message":"hello"}
 
 Each event is one or more `field: value` lines, followed by an empty line that marks the end of the event. Browsers support SSE natively (the `EventSource` API), and `curl -N` shows the events as they arrive.
 
-> **DIAGRAM PLACEHOLDER** `images/polling-vs-sse.png` (priority: high)
->
-> - **Title:** Polling vs. Server-Sent Events: many short calls vs. one open line
-> - **Type:** two side-by-side sequence diagrams (vertical time axis going down), "Polling" on the left, "Server-Sent Events" on the right
-> - **Show:**
->   - Both panels have two lifelines: `client` and `server`. On the server lifeline, two message icons appear at different times: `"hello"` published at 2.5 s and `"news"` published at 6.2 s (stars on the timeline).
->   - **Left, "Polling (every 2 s)":** the client sends `GET /messages` at 0 s, 2 s, 4 s, 6 s and 8 s. Each is a short request-response pair. Most responses are grey and labeled `nothing new`. The response at 4 s carries `"hello"`; a red bracket from 2.5 s to 4 s labeled `waited 1.5 s`. The response at 8 s carries `"news"`; bracket `waited 1.8 s`. Footer: `5 requests, 3 of them wasted`.
->   - **Right, "Server-Sent Events":** the client sends **one** `GET /events` at 0 s. The server answers once with headers `200, Content-Type: text/event-stream`, then the response is drawn as a thick open band running down the whole timeline (labeled `one response, never finished`). At 2.5 s and 6.2 s, events travel down the band to the client immediately, each shown in its real wire format: `id: 1 / data: {"message":"hello"}` followed by a blank line. Footer: `1 request, events arrive instantly`.
-> - **Takeaway (caption under the image):** Polling asks again and again and finds news late; SSE keeps one response open and the server writes each event into it the moment it happens.
-> - **Style:** match `images/1.png`: subscribers orange, the event stream in its orange arrows, the server in the light-blue container color.
+![Polling sends a request every 2 seconds and finds news late; Server-Sent Events keep one response open and deliver each event the moment it is published](images/polling-vs-sse.png)
 
 ### A modular structure
 
@@ -79,23 +70,7 @@ A process can be running and still be broken: stuck, out of memory, or unable to
 
 An open stream holds resources on the server: the connection, and an entry in the list of clients to send to. Clients leave all the time (they close a tab, lose Wi-Fi, press `Ctrl+C`), and they don't say goodbye first. The server has to notice when a connection closes and stop tracking it. Otherwise dead clients pile up forever. You'll break this on purpose in Step 5.
 
-> **DIAGRAM PLACEHOLDER** `images/clients-set-cleanup.png` (priority: high)
->
-> - **Title:** Inside `events.service.js`: the set of connected clients, with and without cleanup
-> - **Type:** two horizontal timelines (storyboard of 5 moments each), top row "with `res.on('close')`", bottom row "without it (Step 5)"
-> - **Show:**
->   - Each moment is a box showing the `clients` Set as a container with client tokens inside, plus what `/health` reports (`connectedClients: N`).
->   - **Top row, "with cleanup":**
->     1. `A connects` → Set `{A}` → `connectedClients: 1`
->     2. `B connects` → Set `{A, B}` → `2`
->     3. `POST "hello"` → `broadcast()` arrows from the Set to A and B, both receive it (green checks)
->     4. `B presses Ctrl+C` → a `'close'` event fires on B's response → `removeClient(B)` → Set `{A}` → `1`
->     5. `POST "news"` → arrow to A only; response says `deliveredTo: 1` ✓
->   - **Bottom row, "without cleanup":** same first three moments, then:
->     4. `B presses Ctrl+C` → the `'close'` event fires but nothing listens (dashed, crossed-out arrow) → Set still `{A, B}`, with B drawn as a grey "ghost" token → `connectedClients: 2` ✗
->     5. `POST "news"` → arrows to A and to the ghost B (the arrow to B ends in a void) → `deliveredTo: 2` ✗. A small counter shows that after many connects and disconnects, ghosts keep piling up: `Set size grows forever, memory grows`.
-> - **Takeaway (caption under the image):** Clients never say goodbye; the server must notice the closed connection and remove it. Without that, the set fills with ghosts, health reports lie, and every broadcast wastes work on dead connections.
-> - **Style:** match `images/1.png`: the events service in its green module color, subscribers orange, ghost clients grey; green check marks for correct counts, red crosses for wrong ones.
+![The clients Set over time: with res.on('close') a disconnected client is removed; without it the client stays as a ghost and the counts are wrong](images/clients-set-cleanup.png)
 
 ## Step 1: Create the project
 

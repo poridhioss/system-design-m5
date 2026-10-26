@@ -17,7 +17,7 @@ Real services aren't three separate apps. In this lab, which is a **task** rathe
 
 You get a working starting point: a service skeleton with its Docker setup already done, plus the code from the earlier labs to copy from. Each task below says what to build and how to check it. Every task also has a hint and a full solution in collapsible blocks. Try it yourself first. AI tools are allowed: if you use one, make sure you understand and can explain what it wrote.
 
-![alt text](<images/Containerized Web Service Architecture.png>)
+![Architecture: the client and Docker reach the API container, where server.js and app.js load the health, users, reports and events modules, backed by the PostgreSQL container](<images/Containerized Web Service Architecture.png>)
 
 ## Objectives
 
@@ -44,24 +44,7 @@ A **graceful shutdown** listens for `SIGTERM` and closes down in order:
 
 Plus a **safety net**: a timer that forces the process to exit if any of this hangs, so it exits on its own terms before Docker's `SIGKILL` arrives.
 
-> **DIAGRAM PLACEHOLDER** `images/graceful-shutdown-timeline.png` (priority: high)
->
-> - **Title:** `docker compose stop`: ignoring `SIGTERM` vs. a graceful shutdown
-> - **Type:** two horizontal timelines on a shared time axis from 0 to 10.5 s (top: "Before: no handler", bottom: "After: graceful shutdown"); the bottom one gets a zoomed-in callout because it's so short
-> - **Show:**
->   - Time axis: `0 s` ... `10 s` ... `10.5 s`. At 0 s on both rows, a Docker whale sends a `SIGTERM` lightning bolt to the `api` process.
->   - **Top row, "Before":** a long grey bar from 0 to 10 s labeled `SIGTERM ignored, still running`. An open event-stream connection (orange) runs along the bar. At 10 s, Docker sends `SIGKILL` (red skull or red bolt); the process box shatters; the orange stream is cut with a jagged red end labeled `subscriber cut off: curl (18) transfer closed`. End badge: `Exited (137)` with a note `137 = 128 + 9 (SIGKILL)`. Total: `10.5 s`.
->   - **Bottom row, "After":** a very short segment near 0 s, with a zoomed-in callout box (0 ms → ~300 ms) showing the steps of `shutdown()` in order, each as a numbered chip:
->     1. `state.shuttingDown = true` → small side note `/health now answers 503`
->     2. `server.close()`: "no new connections"
->     3. `closeAllClients()`: the orange event stream ends cleanly with a green check, labeled `subscriber's stream ends normally`
->     4. `all connections closed`
->     5. `pool.end()`: "database connections closed"
->     6. `process.exit(0)`
->     End badge: `Exited (0)`. Total: `0.33 s`.
->   - Under the bottom row, a dashed timer line from 0 to 8 s labeled `safety net: force exit after SHUTDOWN_TIMEOUT_MS (8 s), before Docker's 10 s SIGKILL`; it's never reached in a normal shutdown.
-> - **Takeaway (caption under the image):** Without a handler, Docker waits 10 seconds and then kills the service mid-stream. With one, the service stops in the right order and exits cleanly in a fraction of a second. (Numbers from a real VM run.)
-> - **Style:** match `images/Containerized Web Service Architecture.png`: Docker purple, the API in its dark-blue container color, events in their red/pink module color for the stream; success green, kill red.
+![docker compose stop: without a handler the service is killed after 10 seconds with exit code 137; with graceful shutdown it stops in 0.33 s with exit code 0](images/graceful-shutdown-timeline.png)
 
 ### A health check that tells the truth
 
