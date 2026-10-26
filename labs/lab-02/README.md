@@ -747,5 +747,3 @@ You took three handlers that worked but behaved badly, measured each problem, an
 - **Stream errors are different.** A stream that fails halfway has already sent its status, so all the server can do is stop, log it and release its resources.
 
 Concurrency limits and backpressure are the same idea in two places: never let a fast producer create more work than a slow consumer can handle. In the **Modular Streaming Service** lab, you'll build a service around streaming, organized into modules, with a health endpoint.
-
-When you're done, stop the dev server with `Ctrl+C` in the second terminal. To remove the database and its data, run `docker compose down -v`.
