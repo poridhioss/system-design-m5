@@ -50,19 +50,7 @@ takes 200 ms, even if B doesn't need A's result. When queries are independent, s
 const [a, b] = await Promise.all([queryA(), queryB()]);   // about 100 ms
 ```
 
-> **DIAGRAM PLACEHOLDER** `images/sequential-vs-parallel.png` (priority: high)
->
-> - **Title:** The same three queries: one after another vs. all at once
-> - **Type:** timeline (Gantt-style), three stacked panels sharing one time axis from 0 to 300 ms
-> - **Show:**
->   - A horizontal time axis at the bottom: `0 ms`, `100 ms`, `200 ms`, `300 ms`.
->   - **Panel 1, "Callbacks (nested)":** three bars placed end to end: `profile query` (0–100 ms), `first member query` (100–200 ms), `newest member query` (200–300 ms). Small curved arrows between them labeled "starts inside the previous callback". Total on the right: `≈ 300 ms`.
->   - **Panel 2, "async/await, one by one":** the same three bars end to end, labeled with `await` at each start. Total: `≈ 300 ms`. A note: "cleaner code, same speed".
->   - **Panel 3, "Promise.all":** the three bars stacked vertically, all spanning 0–100 ms (they overlap in time). A bracket over them: `Promise.all waits for all three`. Total: `≈ 100 ms`.
->   - Under each panel, a thin lane labeled `Node.js thread` that is almost empty: only tiny tick marks where a query is sent and where a result arrives, the rest labeled "free: serving other requests". This shows that waiting for the database doesn't occupy the thread.
->   - Each query bar sits on a lane labeled `PostgreSQL (pg_sleep 0.1 s)`, to show the waiting happens in the database, not in Node.
-> - **Takeaway (caption under the image):** `await` doesn't start anything, it only waits. Independent queries started together with `Promise.all` take as long as the slowest one, not the sum. Measured on the VM: 0.32 s with callbacks vs. 0.16 s with `Promise.all`.
-> - **Style:** match `images/Async Node.js Architecture Diagram.png`: use the dashboard's green for the query bars, light blue for the Node.js thread lane.
+![Timeline of three 100 ms queries: with nested callbacks or one-by-one await they take about 300 ms; with Promise.all they overlap and take about 100 ms, while the Node.js thread stays free](images/sequential-vs-parallel.png)
 
 ### Too much at once: concurrency limits
 
